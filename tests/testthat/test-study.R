@@ -27,6 +27,19 @@ test_that("the default analysis matches a pooled-variance t-test", {
   expect_true(res$ok)
 })
 
+test_that("the fast OLS matches lm() with covariates and factors", {
+  set.seed(31)
+  d <- simulate_participants(60, effect = 0.4)
+  spec <- default_spec()
+  spec$covariates <- c("age", "gender", "sleep")
+  spec$outcome <- "y2"
+  res <- analyse(d, spec)
+  co <- summary(lm(y2 ~ treat + age + gender + sleep, data = d))$coefficients
+  expect_equal(res$estimate, co["treat", "Estimate"], tolerance = 1e-10)
+  expect_equal(res$t, co["treat", "t value"], tolerance = 1e-10)
+  expect_equal(res$p, co["treat", "Pr(>|t|)"], tolerance = 1e-10)
+})
+
 test_that("one-tailed p halves the two-tailed p for a positive estimate", {
   set.seed(4)
   d <- simulate_participants(40)
@@ -53,19 +66,19 @@ test_that("subgroups, outliers and log transforms change what is analysed", {
   spec <- default_spec()
 
   spec$subgroup <- "women"
-  res <- analyse(d, spec)
+  res <- analyse(d, spec, keep_data = TRUE)
   expect_equal(res$n, sum(d$gender == "female"))
   expect_true(all(res$kept$gender == "female"))
 
   spec <- default_spec()
   d$y1[1] <- 500
   spec$outlier_sd <- 2
-  res <- analyse(d, spec)
+  res <- analyse(d, spec, keep_data = TRUE)
   expect_false(1 %in% res$kept$id)
 
   spec <- default_spec()
   spec$log <- TRUE
-  expect_equal(analyse(d, spec)$kept$.y, log(d$y1))
+  expect_equal(analyse(d, spec, keep_data = TRUE)$kept$.y, log(d$y1))
 })
 
 test_that("constant covariates are dropped instead of erroring", {

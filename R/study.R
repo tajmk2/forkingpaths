@@ -77,16 +77,16 @@ default_spec <- function() {
 
 is_default_spec <- function(spec) identical(spec, default_spec())
 
-subset_group <- function(data, subgroup) {
+subgroup_rows <- function(data, subgroup) {
   keep <- switch(subgroup,
-    all = rep(TRUE, nrow(data)),
+    all = return(seq_len(nrow(data))),
     women = data$gender == "female",
     men = data$gender == "male",
     under_40 = data$age < 40,
     over_40 = data$age >= 40,
     stop("Unknown subgroup: ", subgroup, call. = FALSE)
   )
-  data[keep, , drop = FALSE]
+  which(keep)
 }
 
 #' Run the current analysis
@@ -96,46 +96,66 @@ subset_group <- function(data, subgroup) {
 #' `lm(outcome ~ treat + covariates)`. Covariates that are constant in the
 #' analysed data are dropped silently, as any desperate analyst would.
 #'
-#' @return A list with `p`, `estimate`, `t`, `df`, `n`, `ok` and `kept`
-#'   (the analysed rows, with the analysed outcome in `.y`).
+#' Works on index vectors rather than data frames, because autopilot calls
+#' it hundreds of thousands of times.
+#'
+#' @param keep_data Also return `kept`, the analysed rows as a data frame
+#'   with the analysed outcome in `.y` (for plotting).
+#' @return A list with `p`, `estimate`, `t`, `df`, `n`, `ok`, `rows`
+#'   (analysed row indices) and, if requested, `kept`.
 #' @keywords internal
 #' @noRd
-analyse <- function(data, spec) {
-  d <- subset_group(data, spec$subgroup)
-  y <- d[[spec$outcome]]
+analyse <- function(data, spec, keep_data = FALSE) {
+  rows <- subgroup_rows(data, spec$subgroup)
+  y <- data[[spec$outcome]][rows]
   if (isTRUE(spec$log)) y <- log(y)
-  d$.y <- y
 
-  if (is.finite(spec$outlier_sd) && nrow(d) > 2) {
-    s <- stats::sd(d$.y)
+  if (is.finite(spec$outlier_sd) && length(y) > 2) {
+    s <- stats::sd(y)
     if (is.finite(s) && s > 0) {
-      d <- d[abs(d$.y - mean(d$.y)) / s <= spec$outlier_sd, , drop = FALSE]
+      keep <- abs(y - mean(y)) / s <= spec$outlier_sd
+      rows <- rows[keep]
+      y <- y[keep]
     }
   }
 
-  fail <- list(p = 1, estimate = 0, t = 0, df = NA_real_, n = nrow(d),
-               ok = FALSE, kept = d)
-  covs <- spec$covariates
-  covs <- covs[vapply(covs, function(v) length(unique(d[[v]])) > 1,
-                      logical(1))]
-  if (nrow(d) <= length(covs) + 3 || length(unique(d$treat)) < 2) {
-    return(fail)
+  result <- function(p, est, t, df, ok) {
+    out <- list(p = p, estimate = est, t = t, df = df, n = length(rows),
+                ok = ok, rows = rows)
+    if (keep_data) {
+      d <- data[rows, , drop = FALSE]
+      d$.y <- y
+      out$kept <- d
+    }
+    out
   }
+  fail <- function() result(1, 0, 0, NA_real_, FALSE)
 
-  fit <- stats::lm(stats::reformulate(c("treat", covs), response = ".y"),
-                   data = d)
-  co <- summary(fit)$coefficients
-  if (!"treat" %in% rownames(co) || fit$df.residual < 1) return(fail)
+  treat <- data$treat[rows]
+  covs <- lapply(spec$covariates, function(v) as.numeric(data[[v]][rows]))
+  covs <- Filter(function(x) length(unique(x)) > 1, covs)
+  n <- length(rows)
+  if (n <= length(covs) + 3 || length(unique(treat)) < 2) return(fail())
 
-  t <- co["treat", "t value"]
-  df <- fit$df.residual
+  # OLS via QR: identical to lm(y ~ treat + covs), but fast enough for
+  # autopilot to run thousands of careers.
+  X <- matrix(c(rep(1, n), treat, unlist(covs)), nrow = n)
+  fit <- qr(X)
+  df <- n - fit$rank
+  if (fit$rank < ncol(X) || df < 1) return(fail())
+  beta <- qr.coef(fit, y)
+  sigma2 <- sum(qr.resid(fit, y)^2) / df
+  se <- sqrt(sigma2 * chol2inv(qr.R(fit))[2, 2])
+  if (!is.finite(se) || se <= 0) return(fail())
+
+  est <- beta[[2]]
+  t <- est / se
   p <- if (isTRUE(spec$one_tailed)) {
     stats::pt(t, df, lower.tail = FALSE)
   } else {
     2 * stats::pt(-abs(t), df)
   }
-  list(p = unname(p), estimate = unname(co["treat", "Estimate"]),
-       t = unname(t), df = df, n = nrow(d), ok = TRUE, kept = d)
+  result(p, est, t, df, TRUE)
 }
 
 #' Describe an analysis spec in one line

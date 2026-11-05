@@ -104,7 +104,28 @@ apply_move <- function(study, move, perks = character()) {
   if (cost > study$dof) {
     stop("Not enough degrees of freedom left for that.", call. = FALSE)
   }
-  spec <- study$spec
+  if (move$type == "more_data") {
+    extra <- simulate_participants(move$value, study$effect)
+    d <- rbind(study$data, extra)
+    d$id <- seq_len(nrow(d))
+    study$data <- d
+  } else {
+    study$spec <- spec_after(study$spec, move)
+  }
+  study$dof <- study$dof - cost
+  study$suspicion <- study$suspicion + move_suspicion(move$type)
+  res <- analyse(study$data, study$spec)
+  study$trail <- rbind(study$trail, data.frame(
+    step = nrow(study$trail), move = move$label, p = res$p,
+    stringsAsFactors = FALSE
+  ))
+  study
+}
+
+#' The analysis spec after a (non-data) move
+#' @keywords internal
+#' @noRd
+spec_after <- function(spec, move) {
   switch(move$type,
     outliers = spec$outlier_sd <- move$value,
     covariate = {
@@ -119,21 +140,7 @@ apply_move <- function(study, move, perks = character()) {
     log = spec$log <- isTRUE(move$value),
     one_tailed = spec$one_tailed <- TRUE,
     reset = spec <- default_spec(),
-    more_data = {
-      extra <- simulate_participants(move$value, study$effect)
-      d <- rbind(study$data, extra)
-      d$id <- seq_len(nrow(d))
-      study$data <- d
-    },
     stop("Unknown move: ", move$type, call. = FALSE)
   )
-  study$spec <- spec
-  study$dof <- study$dof - cost
-  study$suspicion <- study$suspicion + move_suspicion(move$type)
-  res <- analyse(study$data, study$spec)
-  study$trail <- rbind(study$trail, data.frame(
-    step = nrow(study$trail), move = move$label, p = res$p,
-    stringsAsFactors = FALSE
-  ))
-  study
+  spec
 }

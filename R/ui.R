@@ -65,7 +65,7 @@ play <- function(seed = NULL, plot = interactive(), ask = NULL) {
 play_study <- function(run, ask, plot) {
   repeat {
     show_study(run)
-    if (plot) plot_study(run$study)
+    if (plot) plot_study(run$study, run)
 
     moves <- affordable_moves(run$study, run$perks)
     types <- unique(vapply(moves, `[[`, "", "type"))
@@ -282,19 +282,54 @@ show_ending <- function(run) {
 
 # Plotting --------------------------------------------------------------------
 
+THEMES <- list(
+  light = list(bg = "white", fg = "#333333", main = "black",
+               control = "#6b7a8f", treatment = "#d1495b",
+               trail = "#333333", hit = "#d1495b", alpha = "#d1495b"),
+  gloom = list(bg = "#07070d", fg = "#8a93a6", main = "#d6d2c4",
+               control = "#7f93ba", treatment = "#f2c46d",
+               trail = "#8ff0a4", hit = "#f2c46d", alpha = "#d1495b")
+)
+
 #' Plot the current analysis and the p-value trail
+#'
+#' With `scene = TRUE` (the default, see `options(forkingpaths.scene)`) the
+#' lab is drawn above the statistics in pixel art, in a dark theme.
 #' @keywords internal
 #' @noRd
-plot_study <- function(study) {
-  res <- analyse(study$data, study$spec)
+plot_study <- function(study, run = NULL,
+                       scene = getOption("forkingpaths.scene", TRUE)) {
+  res <- analyse(study$data, study$spec, keep_data = TRUE)
   alpha <- study$journal$alpha
-  op <- graphics::par(mfrow = c(1, 2), mar = c(4, 4, 3, 1))
-  on.exit(graphics::par(op))
+  th <- THEMES[[if (scene) "gloom" else "light"]]
+
+  op <- graphics::par(no.readonly = TRUE)
+  on.exit({
+    graphics::layout(1)
+    graphics::par(op)
+  })
+  graphics::par(bg = th$bg, fg = th$fg, col.axis = th$fg, col.lab = th$fg,
+                col.main = th$main)
+
+  if (scene) {
+    filed <- if (is.null(run)) 0 else
+      sum(run$history$outcome == "file drawer")
+    stage <- reviewer_stage(study$suspicion)
+    graphics::layout(matrix(c(1, 1, 2, 3), 2, byrow = TRUE),
+                     heights = c(1.3, 1))
+    graphics::par(mar = c(1.6, 0.5, 0.5, 0.5))
+    draw_canvas(lab_scene(study$suspicion, res$p, alpha, filed, stage))
+    graphics::mtext(scene_caption(stage, res$ok && res$p < alpha), side = 1,
+                    line = 0.4, family = "mono", cex = 0.85, col = "#f2c46d")
+  } else {
+    graphics::par(mfrow = c(1, 2))
+  }
+  graphics::par(mar = c(4, 4, 2.5, 1))
 
   y_lab <- study$labels[[study$spec$outcome]]
   if (isTRUE(study$spec$log)) y_lab <- sprintf("log(%s)", y_lab)
   kept <- res$kept
-  cols <- c(control = "#6b7a8f", treatment = "#d1495b")
+  cols <- c(control = th$control, treatment = th$treatment)
   if (nrow(kept)) {
     graphics::stripchart(.y ~ group, data = kept, vertical = TRUE,
       method = "jitter", jitter = 0.15, pch = 16,
@@ -312,13 +347,14 @@ plot_study <- function(study) {
   trail <- study$trail
   p <- pmax(trail$p, 1e-4)
   graphics::plot(trail$step, p, type = "b", log = "y", pch = 16,
-    ylim = c(min(c(p, alpha / 4)), 1), xlab = "Forking path step", xaxt = "n",
-    ylab = "p-value", main = "Your garden of forking paths",
-    col = ifelse(p < alpha, "#d1495b", "#333333"))
+    ylim = c(min(c(p, alpha / 4)), 1), xlab = "Forking path step",
+    xaxt = "n", ylab = "p-value", main = "Your garden of forking paths",
+    col = ifelse(p < alpha, th$hit, th$trail))
   graphics::axis(1, at = trail$step)
-  graphics::abline(h = alpha, lty = 2, col = "#d1495b")
-  graphics::mtext(sprintf("alpha = %s", format(alpha)), side = 3,
-                  line = 0.1, cex = 0.8, col = "#d1495b")
+  graphics::abline(h = alpha, lty = 2, col = th$alpha)
+  graphics::text(graphics::par("usr")[2], alpha,
+                 sprintf("alpha = %s", format(alpha)), adj = c(1.05, -0.5),
+                 cex = 0.8, col = th$alpha)
   invisible(NULL)
 }
 
