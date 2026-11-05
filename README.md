@@ -33,7 +33,7 @@ When you submit:
 Journals get stricter each year (alpha .05, then .01, then .005). After each
 year you pick one of three perks. If you hit zero credibility you're fired. Tenure needs 600 points.
 
-While you play, the Plots pane shows your lab at night in pixel art. The CRT
+While you play, the Plots pane shows your lab at night. The monitor
 shows the current p and turns amber when it's significant, the file-drawer
 pile grows, and Reviewer 2 creeps closer as your suspicion rises. Below the
 scene are the two-group data and your trail of p-values.
