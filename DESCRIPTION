@@ -1,0 +1,28 @@
+Package: forkingpaths
+Type: Package
+Title: A p-Hacking Roguelike for the R Console
+Version: 0.1.0
+Authors@R:
+    person("Tudor", role = c("aut", "cre"),
+           email = "chickengalactica@gmail.com")
+Description: A turn-based roguelike for bored statisticians. Each study
+    starts with a dataset and a preregistered analysis. Spend your
+    researcher degrees of freedom on outlier exclusion, covariates,
+    outcome switching, subgroups and optional stopping until p < alpha,
+    then face Reviewer 2 and the replication crisis. Survive three years
+    with your credibility intact and earn tenure. Then find out how many
+    of your findings were real.
+License: MIT + file LICENSE
+Encoding: UTF-8
+Depends:
+    R (>= 4.0.0)
+Imports:
+    graphics,
+    grDevices,
+    stats,
+    utils
+Suggests:
+    testthat (>= 3.0.0)
+Config/testthat/edition: 3
+Roxygen: list(markdown = TRUE)
+Config/roxygen2/version: 8.1.1
